@@ -10,7 +10,7 @@
 
 static void * vk_handle = nullptr;
 VkInstance vk_instance = VK_NULL_HANDLE;
-static std::vector<vk::physical_device> physical_devices;
+static std::vector<vk::physical_device> physical_devices {};
 
 //================================================================
 VkSurfaceKHR vk::surface::handle = VK_NULL_HANDLE;
@@ -174,68 +174,80 @@ vk::physical_device::physical_device(VkPhysicalDevice & handle) : handle(handle)
 			GetPhysicalDeviceSurfaceSupportKHR(handle, i, vk::surface::handle, &this->queue_families_presentable[i]);
 		}
 	}
+}
+
+uint32_t vk::physical_device::find_staging_memory(uint32_t restrict_mask) const {
+	uint32_t index = UINT32_MAX;
 	
-	for (uint32_t i = 1; i < this->memory_properties.memoryTypeCount; i++) {
-		memory_types.push_back({i, &memory_properties.memoryTypes[i], &memory_properties.memoryHeaps[memory_properties.memoryTypes[i].heapIndex]});
-	}
-	
-	memory_type_best_staging = &memory_types[0];
-	memory_type_best_device_ideal= &memory_types[0];
-	
-	for (memory_type const & mt : memory_types) {
-		do { //staging
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) memory_type_best_staging = &mt;
+	for (uint32_t mi = 0, ri = 0; mi < memory_properties.memoryTypeCount; mi++) {
+		ri = 1 << mi;
+		if (!(ri & restrict_mask) || !(memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) continue;
+		else if (index == UINT32_MAX) index = mi;
+		
+		do {
+			if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].size != memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].size) {
+				if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].size > memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].size) index = mi;
 				break;
 			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) memory_type_best_staging = &mt;
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) index = mi;
 				break;
 			}
-			if (mt.heap->size != memory_type_best_staging->heap->size) {
-				if (mt.heap->size > memory_type_best_staging->heap->size) memory_type_best_staging = &mt;
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) index = mi;
 				break;
 			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) memory_type_best_staging = &mt;
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) index = mi;
 				break;
 			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-			if ((mt.heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != (memory_type_best_staging->heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
-				if (mt.heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-		} while(0);
-		do { //device ideal
-			if ((mt.heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != (memory_type_best_staging->heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
-				if (mt.heap->flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-			if (mt.heap->size != memory_type_best_staging->heap->size) {
-				if (mt.heap->size > memory_type_best_staging->heap->size) memory_type_best_staging = &mt;
-				break;
-			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) memory_type_best_staging = &mt;
-				break;
-			}
-			if ((mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != (memory_type_best_staging->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-				if (mt.type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) memory_type_best_staging = &mt;
+			if ((memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != (memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+				if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) index = mi;
 				break;
 			}
 		} while(0);
 	}
+	if (index == UINT32_MAX) srcthrow("memory index requirements could not be satisfied");
+	return index;
+}
+
+uint32_t vk::physical_device::find_device_memory(uint32_t restrict_mask) const {
+	uint32_t index = UINT32_MAX;
+	
+	for (uint32_t mi = 0, ri = 0; mi < memory_properties.memoryTypeCount; mi++) {
+		ri = 1 << mi;
+		if (!(ri & restrict_mask)) continue;
+		else if (index == UINT32_MAX) index = mi;
+		
+		do {
+			if ((memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != (memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)) {
+				if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) index = mi;
+				break;
+			}
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) index = mi;
+				break;
+			}
+			if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].size != memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].size) {
+				if (memory_properties.memoryHeaps[memory_properties.memoryTypes[mi].heapIndex].size > memory_properties.memoryHeaps[memory_properties.memoryTypes[index].heapIndex].size) index = mi;
+				break;
+			}
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) index = mi;
+				break;
+			}
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) index = mi;
+				break;
+			}
+			if ((memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != (memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+				if (memory_properties.memoryTypes[mi].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) index = mi;
+				break;
+			}
+		} while(0);
+	}
+	if (index == UINT32_MAX) srcthrow("memory index requirements could not be satisfied");
+	return index;
 }
 
 std::vector<vk::physical_device> const & vk::get_physical_devices() {
